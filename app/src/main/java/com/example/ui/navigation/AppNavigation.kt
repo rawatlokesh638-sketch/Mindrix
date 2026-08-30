@@ -14,6 +14,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.example.ui.AuthState
 import com.example.ui.MainViewModel
 import com.example.ui.components.BottomNavBar
 import com.example.ui.screens.auth.AuthScreen
@@ -24,10 +25,12 @@ import com.example.ui.screens.leaderboard.LeaderboardScreen
 import com.example.ui.screens.profile.ProfileScreen
 import com.example.ui.screens.result.ResultScreen
 import com.example.ui.screens.shop.ShopScreen
+import com.example.ui.screens.splash.SplashScreen
 
 @Composable
 fun AppNavigation(viewModel: MainViewModel) {
     val navController = rememberNavController()
+    val authState by viewModel.authState.collectAsState()
     val userStats by viewModel.userStats.collectAsState()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: ""
@@ -37,10 +40,35 @@ fun AppNavigation(viewModel: MainViewModel) {
             currentRoute.contains("Shop") ||
             currentRoute.contains("Profile")
 
-    LaunchedEffect(userStats) {
-        if (userStats == null && !currentRoute.contains("Auth")) {
-            navController.navigate(Auth) {
-                popUpTo(0) { inclusive = true }
+    // Handle authentication state transitions
+    LaunchedEffect(authState) {
+        when (authState) {
+            AuthState.Checking -> {
+                // Stay on Splash, do nothing
+            }
+            AuthState.Authenticated -> {
+                // Only navigate to Home if not already there
+                if (!currentRoute.contains("Home") && !currentRoute.contains("Splash")) {
+                    navController.navigate(Home) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                } else if (currentRoute.contains("Splash")) {
+                    navController.navigate(Home) {
+                        popUpTo<Splash> { inclusive = true }
+                    }
+                }
+            }
+            AuthState.Unauthenticated -> {
+                // Only navigate to Auth if not already there
+                if (!currentRoute.contains("Auth") && !currentRoute.contains("Splash")) {
+                    navController.navigate(Auth) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                } else if (currentRoute.contains("Splash")) {
+                    navController.navigate(Auth) {
+                        popUpTo<Splash> { inclusive = true }
+                    }
+                }
             }
         }
     }
@@ -66,13 +94,16 @@ fun AppNavigation(viewModel: MainViewModel) {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Auth,
+            startDestination = Splash,
             modifier = Modifier.padding(innerPadding),
             enterTransition = { fadeIn(tween(250)) + slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(250)) },
             exitTransition = { fadeOut(tween(200)) + slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(200)) },
             popEnterTransition = { fadeIn(tween(250)) + slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(250)) },
             popExitTransition = { fadeOut(tween(200)) + slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(200)) }
         ) {
+            composable<Splash> {
+                SplashScreen()
+            }
             composable<Auth> {
                 AuthScreen(
                     viewModel = viewModel,
