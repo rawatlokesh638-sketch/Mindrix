@@ -64,6 +64,9 @@ fun ShopScreen(viewModel: MainViewModel) {
         ShopItem("theme_void", "Void Magenta", "Dark matter ultra-violet singularity aesthetic.", 1000, "theme", Icons.Default.NightlightRound, Color(0xFFFF0055))
     )
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val activity = context as? android.app.Activity
+
     Scaffold(
         containerColor = DarkSlate,
         topBar = {
@@ -102,6 +105,69 @@ fun ShopScreen(viewModel: MainViewModel) {
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            item {
+                // Free Coin & XP Supply Requisition (Rewarded Video Ad)
+                Surface(
+                    color = Amber400.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, Amber400.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                color = Amber400.copy(alpha = 0.2f),
+                                shape = CircleShape,
+                                modifier = Modifier.size(46.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text("🎁", fontSize = 22.sp)
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    "FREE REQUISITION",
+                                    color = Amber400,
+                                    fontWeight = FontWeight.Black,
+                                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp)
+                                )
+                                Text(
+                                    "Watch short ad for +150 🪙 & +50 XP",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp)
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                SoundManager.playClick()
+                                activity?.let { act ->
+                                    com.example.ads.AdManager.showRewardedAd(
+                                        activity = act,
+                                        onRewardEarned = { _, _ ->
+                                            viewModel.claimAdReward(coins = 150, xp = 50)
+                                        }
+                                    )
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Amber400),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("WATCH", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
             item {
                 TabRow(
                     selectedTabIndex = selectedTab,

@@ -48,16 +48,19 @@ fun AppNavigation(viewModel: MainViewModel) {
     Scaffold(
         bottomBar = {
             if (showBottomNav && userStats != null) {
-                BottomNavBar(
-                    currentRoute = currentRoute,
-                    onNavigate = { route ->
-                        navController.navigate(route) {
-                            popUpTo(Home) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
+                androidx.compose.foundation.layout.Column {
+                    com.example.ads.BannerAdView()
+                    BottomNavBar(
+                        currentRoute = currentRoute,
+                        onNavigate = { route ->
+                            navController.navigate(route) {
+                                popUpTo(Home) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
     ) { innerPadding ->

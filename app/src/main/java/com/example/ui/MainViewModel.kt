@@ -5,8 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.ai.AiDifficultyTier
 import com.example.ai.AiPersonalityType
 import com.example.audio.SoundManager
+import com.example.data.Achievement
+import com.example.data.AchievementCatalog
 import com.example.data.MindrixRepository
 import com.example.data.UserStats
+import com.example.engine.XpBreakdown
+import com.example.engine.XpEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -136,15 +140,24 @@ class MainViewModel(private val repository: MindrixRepository) : ViewModel() {
     private val _streakRewardEvent = MutableStateFlow<StreakReward?>(null)
     val streakRewardEvent = _streakRewardEvent.asStateFlow()
 
-    private val _achievementUnlockEvent = MutableStateFlow<com.example.data.Achievement?>(null)
+    private val _achievementUnlockEvent = MutableStateFlow<Achievement?>(null)
     val achievementUnlockEvent = _achievementUnlockEvent.asStateFlow()
+
+    private val _lastXpBreakdown = MutableStateFlow<XpBreakdown?>(null)
+    val lastXpBreakdown = _lastXpBreakdown.asStateFlow()
+
+    private val pendingAchievements = mutableListOf<Achievement>()
 
     fun dismissStreakReward() {
         _streakRewardEvent.value = null
     }
 
     fun dismissAchievementUnlock() {
-        _achievementUnlockEvent.value = null
+        if (pendingAchievements.isNotEmpty()) {
+            _achievementUnlockEvent.value = pendingAchievements.removeAt(0)
+        } else {
+            _achievementUnlockEvent.value = null
+        }
     }
 
     private val _selectedAi = MutableStateFlow(AiPersonalityType.NOVA)
@@ -253,60 +266,39 @@ class MainViewModel(private val repository: MindrixRepository) : ViewModel() {
             else -> 1
         }
 
-        var streakBonusCoins = 0
-        var streakBonusXp = 0
         val isFirstSessionToday = !currentStats.dailySessionCompletedToday || !isSameDay
 
+        // Authoritative XP Engine calculation
+        val xpReport = XpEngine.evaluateGamePerformance(
+            currentStats = currentStats,
+            score = score,
+            accuracy = accuracy,
+            timeSeconds = time,
+            isWin = isWin,
+            mode = mode,
+            newStreak = newStreak,
+            isFirstSessionToday = isFirstSessionToday
+        )
+        _lastXpBreakdown.value = xpReport
+
         if (isFirstSessionToday) {
-            streakBonusCoins = 50 + (newStreak * 25)
-            streakBonusXp = 100 + (newStreak * 40)
-            _streakRewardEvent.value = StreakReward(newStreak, streakBonusCoins, streakBonusXp)
+            _streakRewardEvent.value = StreakReward(
+                newStreak,
+                xpReport.streakBonusCoins,
+                xpReport.streakBonusXp
+            )
         }
 
-        // Achievements check
-        val currentUnlockedSet = currentStats.unlockedAchievements.split(",").filter { it.isNotBlank() }.toMutableSet()
-        val nextGamesPlayed = currentStats.gamesPlayed + 1
-        val nextWinsCount = if (isWin) currentStats.winsCount + 1 else currentStats.winsCount
-        val nextBestScore = maxOf(currentStats.bestScore, score)
-
-        var achievementBonusCoins = 0
-        var achievementBonusXp = 0
-
-        com.example.data.AchievementCatalog.allAchievements.forEach { ach ->
-            if (!currentUnlockedSet.contains(ach.id)) {
-                val unlocked = when (ach.id) {
-                    "first_step" -> nextGamesPlayed >= 1
-                    "streak_3" -> newStreak >= 3
-                    "streak_7" -> newStreak >= 7
-                    "high_score" -> nextBestScore >= 2000
-                    "ai_slayer" -> (mode == "ai_battle" && isWin) || nextWinsCount > 0
-                    "century" -> nextGamesPlayed >= 10
-                    "sharp" -> accuracy >= 90
-                    else -> false
-                }
-                if (unlocked) {
-                    currentUnlockedSet.add(ach.id)
-                    achievementBonusCoins += ach.rewardCoins
-                    achievementBonusXp += ach.rewardXp
-                    _achievementUnlockEvent.value = ach
-                }
-            }
+        // Handle unlocked achievements queue
+        if (xpReport.unlockedAchievements.isNotEmpty()) {
+            pendingAchievements.clear()
+            pendingAchievements.addAll(xpReport.unlockedAchievements)
+            _achievementUnlockEvent.value = pendingAchievements.removeAt(0)
         }
 
-        // XP & Level calculations
-        val earnedXp = (score * 0.15f * currentTier.scoreMultiplier).toInt().coerceAtLeast(20)
-        val earnedCoins = (score * 0.08f * currentTier.scoreMultiplier).toInt().coerceAtLeast(10)
-
-        val totalEarnedXp = earnedXp + streakBonusXp + achievementBonusXp
-        val totalEarnedCoins = earnedCoins + streakBonusCoins + achievementBonusCoins
-
-        val oldLevel = currentStats.level
-        val newTotalXp = currentStats.xp + totalEarnedXp
-        val newLevel = (newTotalXp / 1000) + 1
-
-        val levelBonusCoins = if (newLevel > oldLevel) newLevel * 100 else 0
-        if (newLevel > oldLevel) {
-            _levelUpEvent.value = LevelUpReward(newLevel, levelBonusCoins)
+        // Trigger Level-Up Celebration
+        if (xpReport.isLevelUp) {
+            _levelUpEvent.value = LevelUpReward(xpReport.newLevel, xpReport.levelBonusCoins)
         }
 
         // Update missions progress
@@ -323,22 +315,27 @@ class MainViewModel(private val repository: MindrixRepository) : ViewModel() {
             }
         }
 
+        val updatedUnlockedAchievements = (currentStats.unlockedAchievements.split(",") + xpReport.unlockedAchievements.map { it.id })
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString(",")
+
         viewModelScope.launch {
             repository.saveUserStats(
                 currentStats.copy(
-                    xp = newTotalXp,
-                    level = newLevel,
-                    coins = currentStats.coins + totalEarnedCoins + levelBonusCoins,
-                    gamesPlayed = nextGamesPlayed,
-                    winsCount = nextWinsCount,
+                    xp = currentStats.xp + xpReport.totalXpEarned,
+                    level = xpReport.newLevel,
+                    coins = currentStats.coins + xpReport.totalCoinsEarned,
+                    gamesPlayed = currentStats.gamesPlayed + 1,
+                    winsCount = if (isWin) currentStats.winsCount + 1 else currentStats.winsCount,
                     lossesCount = if (!isWin) currentStats.lossesCount + 1 else currentStats.lossesCount,
-                    bestScore = nextBestScore,
+                    bestScore = maxOf(currentStats.bestScore, score),
                     streak = newStreak,
                     aiRating = newAiRating,
                     dailyChallengeCompleted = if (mode == "daily") true else currentStats.dailyChallengeCompleted,
                     lastActiveDate = todayStr,
                     dailySessionCompletedToday = true,
-                    unlockedAchievements = currentUnlockedSet.joinToString(",")
+                    unlockedAchievements = updatedUnlockedAchievements
                 )
             )
         }
@@ -356,7 +353,12 @@ class MainViewModel(private val repository: MindrixRepository) : ViewModel() {
         val currentStats = userStats.value ?: return
         val newXp = currentStats.xp + mission.rewardXp
         val newCoins = currentStats.coins + mission.rewardCoins
-        val newLevel = (newXp / 1000) + 1
+        val newLevel = XpEngine.calculateLevelFromTotalXp(newXp)
+
+        if (newLevel > currentStats.level) {
+            val levelBonusCoins = (newLevel - currentStats.level) * 150
+            _levelUpEvent.value = LevelUpReward(newLevel, levelBonusCoins)
+        }
 
         viewModelScope.launch {
             repository.saveUserStats(
@@ -414,6 +416,49 @@ class MainViewModel(private val repository: MindrixRepository) : ViewModel() {
                 )
             )
         }
+        return true
+    }
+
+    private val _doubleRewardClaimed = MutableStateFlow(false)
+    val doubleRewardClaimed = _doubleRewardClaimed.asStateFlow()
+
+    fun resetMatchState() {
+        _doubleRewardClaimed.value = false
+    }
+
+    fun claimAdReward(coins: Int, xp: Int = 0) {
+        val currentStats = userStats.value ?: return
+        val newCoins = currentStats.coins + coins
+        val newXp = currentStats.xp + xp
+        val newLevel = XpEngine.calculateLevelFromTotalXp(newXp)
+
+        if (newLevel > currentStats.level) {
+            val levelBonusCoins = (newLevel - currentStats.level) * 150
+            _levelUpEvent.value = LevelUpReward(newLevel, levelBonusCoins)
+        }
+
+        SoundManager.playLevelUp()
+        viewModelScope.launch {
+            repository.saveUserStats(
+                currentStats.copy(
+                    coins = newCoins,
+                    xp = newXp,
+                    level = newLevel
+                )
+            )
+        }
+    }
+
+    fun claimDoubleMatchReward(): Boolean {
+        if (_doubleRewardClaimed.value) return false
+        val currentStats = userStats.value ?: return false
+        val breakdown = _lastXpBreakdown.value ?: return false
+
+        val extraCoins = breakdown.totalCoinsEarned
+        val extraXp = breakdown.totalXpEarned
+
+        _doubleRewardClaimed.value = true
+        claimAdReward(coins = extraCoins, xp = extraXp)
         return true
     }
 

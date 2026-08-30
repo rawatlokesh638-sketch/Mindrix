@@ -290,7 +290,8 @@ fun TopProfileBar(
         }
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text("Human Operative", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = Slate400)
+            val title = com.example.engine.XpEngine.getOperativeTitle(stats.level)
+            Text(title.uppercase(), style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold), color = Cyan400)
             Text(stats.username, style = MaterialTheme.typography.titleSmall, color = Color.White, fontWeight = FontWeight.Bold)
         }
 

@@ -418,4 +418,60 @@ object QuestionGenerator {
             modeCategory = "Scale Balance"
         )
     }
+
+    fun generateDailyEliteChallenge(): ChoiceQuestion {
+        val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+        val todayStr = dateFormat.format(java.util.Date())
+        val dayHash = kotlin.math.abs(todayStr.hashCode())
+
+        val elitePuzzles = listOf(
+            ChoiceQuestion(
+                title = "Elite Daily: Quantum Paradox",
+                questionText = "In a 3-qubit superposition vault, qubit A determines B, B determines C, and C inverts A. If A initializes in state |1⟩, what is the steady-state collapse after 7 iterations?",
+                options = listOf("State |0⟩", "State |1⟩", "Quantum Decoherence / Null", "Infinite Oscillation Loop"),
+                correctIndex = 1,
+                explanation = "A=1 -> B=1 -> C=1 -> A=0 -> B=0 -> C=0 -> A=1. After 7 iterations, state returns to |1⟩.",
+                modeCategory = "Daily Elite Sync"
+            ),
+            ChoiceQuestion(
+                title = "Elite Daily: Temporal Singularity",
+                questionText = "Three autonomous AI sentinels synchronize time pulses at primes 7, 11, and 13 seconds. If they pulsed simultaneously at t=0, what is the exact seconds delay before the next triple synchronization?",
+                options = listOf("1001 seconds", "505 seconds", "770 seconds", "1365 seconds"),
+                correctIndex = 0,
+                explanation = "Least Common Multiple of 7, 11, and 13 is 7 × 11 × 13 = 1001 seconds.",
+                modeCategory = "Daily Elite Sync"
+            ),
+            ChoiceQuestion(
+                title = "Elite Daily: Cryptographic Cipher",
+                questionText = "Ciphertext 'NEXUS' translates to 'QHASV' under a cyclic shift. Using the exact same transformation key, what does 'CYBER' decode/encode to?",
+                options = listOf("FBHEU", "FBEHU", "GAFIT", "EBXDS"),
+                correctIndex = 0,
+                explanation = "Shift rule +3 letters forward (N->Q, E->H, X->A, U->S). Applying +3 to C, Y, B, E, R yields F, B, H, E, U.",
+                modeCategory = "Daily Elite Sync"
+            ),
+            ChoiceQuestion(
+                title = "Elite Daily: Neural Matrix Logic",
+                questionText = "If All Sentient Nodes are Synaptic, and No Synaptic AI is Vulnerable, but Some Autonomous Cores are Vulnerable, which inference is logically absolute?",
+                options = listOf(
+                    "Some Autonomous Cores are NOT Sentient Nodes",
+                    "All Autonomous Cores are Sentient Nodes",
+                    "No Sentient Nodes are Autonomous Cores",
+                    "All Vulnerable entities are Sentient Nodes"
+                ),
+                correctIndex = 0,
+                explanation = "Autonomous cores that are vulnerable cannot be synaptic (since no synaptic AI is vulnerable). Since all sentient nodes are synaptic, those vulnerable autonomous cores cannot be sentient nodes.",
+                modeCategory = "Daily Elite Sync"
+            ),
+            ChoiceQuestion(
+                title = "Elite Daily: Recursive Sequence",
+                questionText = "Analyze the elite neural progression: 2, 6, 12, 20, 30, 42, [ ? ]",
+                options = listOf("56", "54", "60", "49"),
+                correctIndex = 0,
+                explanation = "Differences are +4, +6, +8, +10, +12. Next difference is +14, yielding 42 + 14 = 56 (n(n+1) sequence where n=7).",
+                modeCategory = "Daily Elite Sync"
+            )
+        )
+
+        return elitePuzzles[dayHash % elitePuzzles.size]
+    }
 }

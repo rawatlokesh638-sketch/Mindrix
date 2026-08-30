@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.room.Room
+import com.example.ads.AdManager
 import com.example.data.MindrixDatabase
 import com.example.data.MindrixRepository
 import com.example.ui.MainViewModel
@@ -30,10 +31,20 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Initialize Google Mobile Ads SDK & pre-cache App Open & Rewarded Ads
+        AdManager.initialize(applicationContext)
+
         setContent {
             MINDRIXTheme {
                 AppNavigation(viewModel)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Show App Open Ad if loaded and ready
+        AdManager.showAppOpenAdIfAvailable(this)
     }
 }

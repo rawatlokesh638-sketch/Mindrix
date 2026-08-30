@@ -34,6 +34,7 @@ import com.example.audio.SoundManager
 import com.example.game.*
 import com.example.ui.MainViewModel
 import com.example.ui.components.AnswerFeedbackBanner
+import com.example.ui.components.AiOutsmartBanner
 import com.example.ui.components.ParticleExplosion
 import com.example.ui.theme.*
 import kotlinx.coroutines.delay
@@ -89,6 +90,7 @@ fun GameplayScreen(
     // Mode-specific question states
     fun generateQuestionForMode(m: String): ChoiceQuestion {
         return when (m) {
+            "daily" -> QuestionGenerator.generateDailyEliteChallenge()
             "logic" -> QuestionGenerator.generateLogicQuestion(difficulty, userStats?.aiRating ?: 1200)
             "speed", "arithmetic" -> QuestionGenerator.generateSpeedQuestion(difficulty)
             "pattern" -> QuestionGenerator.generatePatternQuestion(difficulty)
@@ -96,7 +98,7 @@ fun GameplayScreen(
             "vocabulary" -> QuestionGenerator.generateVocabularyQuestion(difficulty)
             "stroop" -> QuestionGenerator.generateStroopQuestion(difficulty)
             "balance" -> QuestionGenerator.generateBalanceQuestion(difficulty)
-            "ai_battle", "daily" -> {
+            "ai_battle" -> {
                 when (Random.nextInt(4)) {
                     0 -> QuestionGenerator.generateLogicQuestion(difficulty, userStats?.aiRating ?: 1200)
                     1 -> QuestionGenerator.generatePatternQuestion(difficulty)
@@ -341,6 +343,10 @@ fun GameplayScreen(
 
                 // Combo & Feedback Banner
                 AnswerFeedbackBanner(isCorrect = isCorrectAnswer, combo = combo)
+
+                if (mode == "ai_battle" && combo >= 2) {
+                    AiOutsmartBanner(combo = combo, aiName = selectedAi.displayName)
+                }
 
                 // Main Game Content Area
                 Box(

@@ -4,8 +4,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -15,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -24,6 +27,10 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.ai.AiDifficultyTier
 import com.example.audio.SoundManager
+import com.example.data.AchievementCategory
+import com.example.data.AchievementCatalog
+import com.example.data.UserStats
+import com.example.engine.XpEngine
 import com.example.ui.MainViewModel
 import com.example.ui.screens.home.StatItem
 import com.example.ui.theme.*
@@ -33,12 +40,33 @@ import com.example.ui.theme.*
 fun ProfileScreen(viewModel: MainViewModel, onLogout: () -> Unit) {
     val userStats by viewModel.userStats.collectAsState()
     val soundEnabled by SoundManager.soundEnabled.collectAsState()
+    var selectedCategoryFilter by remember { mutableStateOf<AchievementCategory?>(null) }
+
     val aiTier = remember(userStats?.aiRating) {
         AiDifficultyTier.fromRating(userStats?.aiRating ?: 1200)
     }
 
     val totalGames = (userStats?.winsCount ?: 0) + (userStats?.lossesCount ?: 0)
     val winRate = if (totalGames > 0) ((userStats?.winsCount ?: 0) * 100) / totalGames else 0
+
+    val level = userStats?.level ?: 1
+    val totalLifetimeXp = userStats?.xp ?: 0
+    val (currentLevelXp, nextLevelTargetXp) = remember(totalLifetimeXp) {
+        XpEngine.calculateCurrentLevelProgress(totalLifetimeXp)
+    }
+    val operativeTitle = remember(level) { XpEngine.getOperativeTitle(level) }
+
+    val unlockedSet = remember(userStats?.unlockedAchievements) {
+        userStats?.unlockedAchievements?.split(",")?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+    }
+
+    val filteredAchievements = remember(selectedCategoryFilter) {
+        if (selectedCategoryFilter == null) {
+            AchievementCatalog.allAchievements
+        } else {
+            AchievementCatalog.allAchievements.filter { it.category == selectedCategoryFilter }
+        }
+    }
 
     Scaffold(
         containerColor = DarkSlate,
@@ -47,7 +75,7 @@ fun ProfileScreen(viewModel: MainViewModel, onLogout: () -> Unit) {
                 title = {
                     Column {
                         Text("OPERATIVE DOSSIER", color = Color.White, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                        Text("NEURAL MATRIX METRICS", color = Cyan400, style = MaterialTheme.typography.labelSmall)
+                        Text("PROGRESSION & PERFORMANCE MATRIX", color = Cyan400, style = MaterialTheme.typography.labelSmall)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSlate)
@@ -78,165 +106,410 @@ fun ProfileScreen(viewModel: MainViewModel, onLogout: () -> Unit) {
                         color = DarkSlate,
                         shape = CircleShape,
                         border = BorderStroke(1.dp, Cyan400),
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(34.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
-                                text = "${userStats?.level ?: 1}",
+                                text = "$level",
                                 color = Cyan400,
                                 fontWeight = FontWeight.Black,
-                                fontSize = 12.sp
+                                fontSize = 13.sp
                             )
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
-                Text(userStats?.username ?: "CyberMage", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
-                Text(aiTier.badge, color = Cyan400, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                Text(
+                    userStats?.username ?: "CyberMage",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
-                // XP Progress Bar
-                val currentXp = (userStats?.xp ?: 0) % 1000
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("LEVEL PROGRESS", color = Slate400, style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp))
-                        Text("$currentXp / 1000 XP", color = Cyan400, style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold))
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    LinearProgressIndicator(
-                        progress = { currentXp / 1000f },
+                Surface(
+                    color = Cyan400.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Cyan400.copy(alpha = 0.4f))
+                ) {
+                    Text(
+                        text = operativeTitle.uppercase(),
                         color = Cyan400,
-                        trackColor = GlassBorder,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
+                        fontWeight = FontWeight.Black,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Comprehensive XP & Level Progression Card
+                Surface(
+                    color = GlassBackground,
+                    border = BorderStroke(1.dp, GlassBorder),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("⚡", fontSize = 14.sp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "LEVEL $level PROGRESSION",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                            Text(
+                                "$currentLevelXp / $nextLevelTargetXp XP",
+                                color = Cyan400,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        val progressRatio = (currentLevelXp.toFloat() / nextLevelTargetXp.toFloat()).coerceIn(0f, 1f)
+                        LinearProgressIndicator(
+                            progress = { progressRatio },
+                            color = Cyan400,
+                            trackColor = GlassBorder,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                "Total Lifetime XP: $totalLifetimeXp",
+                                color = Slate400,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
+                            )
+                            Text(
+                                "Next: Level ${level + 1}",
+                                color = Amber400,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
                 }
             }
 
             item {
-                // Battle Stats Matrix
+                // Daily Streak Protocol Ladder
+                val currentStreak = userStats?.streak ?: 1
+                Surface(
+                    color = Amber400.copy(alpha = 0.10f),
+                    border = BorderStroke(1.dp, Amber400.copy(alpha = 0.35f)),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("🔥", fontSize = 18.sp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        "DAILY STREAK PROTOCOL",
+                                        color = Amber400,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                                    )
+                                    Text(
+                                        "$currentStreak Days Active",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                color = if (userStats?.dailySessionCompletedToday == true) Color(0xFF00E676).copy(alpha = 0.2f) else Slate400.copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, if (userStats?.dailySessionCompletedToday == true) Color(0xFF00E676) else GlassBorder)
+                            ) {
+                                Text(
+                                    text = if (userStats?.dailySessionCompletedToday == true) "TODAY COMPLETE" else "PENDING TODAY",
+                                    color = if (userStats?.dailySessionCompletedToday == true) Color(0xFF00E676) else Slate400,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // 7-day visual node line
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            for (day in 1..7) {
+                                val isPast = day <= currentStreak
+                                val isCurrent = day == ((currentStreak - 1) % 7 + 1)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Surface(
+                                        color = when {
+                                            isCurrent -> Amber400
+                                            isPast -> Amber400.copy(alpha = 0.3f)
+                                            else -> DarkSlate
+                                        },
+                                        shape = CircleShape,
+                                        border = BorderStroke(1.dp, if (isPast || isCurrent) Amber400 else GlassBorder),
+                                        modifier = Modifier.size(30.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            if (isPast) {
+                                                Icon(
+                                                    Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    tint = if (isCurrent) Color.Black else Amber400,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                            } else {
+                                                Text("D$day", fontSize = 9.sp, color = Slate400, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        "+${day * 25}🪙",
+                                        fontSize = 8.sp,
+                                        color = if (isPast || isCurrent) Amber400 else Slate400,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                // Battle Stats Matrix & Mindrix Rank Dossier
                 Surface(
                     color = GlassBackground,
                     border = BorderStroke(1.dp, GlassBorder),
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(20.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(18.dp)) {
-                        Text("CAREER COMBAT STATS", color = Slate400, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp))
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("🛡️", fontSize = 16.sp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("MINDRIX COMBAT RANK", color = Cyan400, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Black, letterSpacing = 1.sp))
+                            }
+                            Surface(
+                                color = Cyan400.copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, Cyan400)
+                            ) {
+                                Text(
+                                    text = "RATING: ${userStats?.aiRating ?: 1200}",
+                                    color = Cyan400,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = aiTier.levelName,
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                )
+                                Text(
+                                    text = "AI Tier: ${aiTier.badge}",
+                                    color = Slate400,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = operativeTitle,
+                                    color = Amber400,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                )
+                                Text(
+                                    text = "Mindrix Standing",
+                                    color = Slate400,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp)
+                                )
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(16.dp))
+                        Divider(color = GlassBorder)
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text("AI WIN / LOSS RATIO & PUZZLE METRICS", color = Slate400, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp))
+                        Spacer(modifier = Modifier.height(12.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
                             StatItem("Win Rate", "$winRate%", Cyan400)
                             Spacer(modifier = Modifier.width(1.dp).height(32.dp).background(GlassBorder))
-                            StatItem("Matches", "${userStats?.gamesPlayed ?: 0}", Color.White)
+                            StatItem("Puzzles Solved", "${userStats?.gamesPlayed ?: 0}", Amber400)
                             Spacer(modifier = Modifier.width(1.dp).height(32.dp).background(GlassBorder))
-                            StatItem("High Score", "${userStats?.bestScore ?: 0}", Amber400)
+                            StatItem("High Score", "${userStats?.bestScore ?: 0}", Color.White)
                         }
-                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Spacer(modifier = Modifier.height(14.dp))
                         Divider(color = GlassBorder)
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
-                            StatItem("Wins", "${userStats?.winsCount ?: 0}", Color(0xFF00E676))
+                            StatItem("AI Wins", "${userStats?.winsCount ?: 0}", Color(0xFF00E676))
                             Spacer(modifier = Modifier.width(1.dp).height(32.dp).background(GlassBorder))
-                            StatItem("Losses", "${userStats?.lossesCount ?: 0}", Color(0xFFFF1744))
+                            StatItem("AI Losses", "${userStats?.lossesCount ?: 0}", Color(0xFFFF1744))
                             Spacer(modifier = Modifier.width(1.dp).height(32.dp).background(GlassBorder))
-                            StatItem("AI Rating", "${userStats?.aiRating ?: 1200}", Purple500)
+                            StatItem("Streak", "${userStats?.streak ?: 1} Days", Amber400)
                         }
                     }
                 }
             }
 
             item {
-                // Cognitive Breakdown
-                Surface(
-                    color = GlassBackground,
-                    border = BorderStroke(1.dp, GlassBorder),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                // Achievements Showcase Header & Filter Chips
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("NEURAL ATTRIBUTES", color = Slate400, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp))
+                        Text(
+                            "OPERATIVE ACHIEVEMENTS",
+                            color = Slate400,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        )
+                        Text(
+                            "${unlockedSet.size} / ${AchievementCatalog.allAchievements.size} UNLOCKED",
+                            color = Cyan400,
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
 
-                        CognitiveSkillBar("Deductive Logic", 0.88f, Cyan400)
-                        CognitiveSkillBar("Sequence Recall", 0.74f, Purple500)
-                        CognitiveSkillBar("Processing Speed", 0.92f, Amber400)
-                        CognitiveSkillBar("Pattern Synthesis", 0.82f, Color(0xFF00E676))
-                        CognitiveSkillBar("Reflex Synchronization", 0.78f, Color(0xFFFF0055))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    val scrollChips = rememberScrollState()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(scrollChips),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = selectedCategoryFilter == null,
+                            onClick = {
+                                SoundManager.playClick()
+                                selectedCategoryFilter = null
+                            },
+                            label = { Text("All (${AchievementCatalog.allAchievements.size})") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Cyan400,
+                                selectedLabelColor = Color.Black,
+                                containerColor = GlassBackground,
+                                labelColor = Slate400
+                            )
+                        )
+
+                        AchievementCategory.values().forEach { cat ->
+                            val count = AchievementCatalog.allAchievements.count { it.category == cat }
+                            FilterChip(
+                                selected = selectedCategoryFilter == cat,
+                                onClick = {
+                                    SoundManager.playClick()
+                                    selectedCategoryFilter = cat
+                                },
+                                label = { Text("${cat.icon} ${cat.displayName} ($count)") },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Cyan400,
+                                    selectedLabelColor = Color.Black,
+                                    containerColor = GlassBackground,
+                                    labelColor = Slate400
+                                )
+                            )
+                        }
                     }
                 }
             }
 
-            item {
-                // Achievements & Daily Streak Dossier
-                val unlockedSet = remember(userStats?.unlockedAchievements) {
-                    userStats?.unlockedAchievements?.split(",")?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
-                }
+            // Achievement Cards
+            filteredAchievements.forEach { ach ->
+                item(key = ach.id) {
+                    val isUnlocked = unlockedSet.contains(ach.id)
+                    val stats = userStats ?: UserStats()
 
-                Surface(
-                    color = GlassBackground,
-                    border = BorderStroke(1.dp, GlassBorder),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    // Calculate live progress for each achievement
+                    val currentProgressValue = when (ach.id) {
+                        "first_step" -> minOf(stats.gamesPlayed, 1)
+                        "century_matches" -> minOf(stats.gamesPlayed, 10)
+                        "veteran_50" -> minOf(stats.gamesPlayed, 25)
+                        "level_5" -> minOf(stats.level, 5)
+                        "level_10" -> minOf(stats.level, 10)
+                        "sharp" -> if (isUnlocked) 90 else 0
+                        "flawless_run" -> if (isUnlocked) 100 else 0
+                        "high_score_1500" -> minOf(stats.bestScore, 1500)
+                        "high_score_3000" -> minOf(stats.bestScore, 3000)
+                        "speed_demon" -> if (isUnlocked) 25 else 0
+                        "ai_slayer_1" -> minOf(stats.winsCount, 1)
+                        "ai_grandmaster" -> minOf(stats.aiRating, 1500)
+                        "streak_3" -> minOf(stats.streak, 3)
+                        "streak_7" -> minOf(stats.streak, 7)
+                        "streak_14" -> minOf(stats.streak, 14)
+                        "coin_hoarder" -> minOf(stats.coins, 1000)
+                        else -> if (isUnlocked) 1 else 0
+                    }
+
+                    val progressRatio = if (isUnlocked) 1f else (currentProgressValue.toFloat() / ach.targetValue.toFloat()).coerceIn(0f, 1f)
+
+                    Surface(
+                        color = if (isUnlocked) Cyan400.copy(alpha = 0.08f) else GlassBackground,
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, if (isUnlocked) Cyan400.copy(alpha = 0.4f) else GlassBorder),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("ACHIEVEMENT BADGES & STREAK", color = Slate400, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp))
-                            Text("${unlockedSet.size} / ${com.example.data.AchievementCatalog.allAchievements.size}", color = Cyan400, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
-                        }
-
-                        // Streak Status Banner
-                        Surface(
-                            color = Amber400.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(16.dp),
-                            border = BorderStroke(1.dp, Amber400.copy(alpha = 0.4f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Row(
-                                modifier = Modifier.padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("🔥", fontSize = 28.sp)
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("Daily Streak: ${userStats?.streak ?: 1} Days", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                    Text(if (userStats?.dailySessionCompletedToday == true) "Today's neural session completed! Streak secured." else "Complete a session today to keep streak active.", color = Amber400, style = MaterialTheme.typography.bodySmall)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        // Achievement Badges List
-                        com.example.data.AchievementCatalog.allAchievements.forEach { ach ->
-                            val isUnlocked = unlockedSet.contains(ach.id)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(if (isUnlocked) Cyan400.copy(alpha = 0.08f) else Color.Transparent, RoundedCornerShape(16.dp))
-                                    .border(1.dp, if (isUnlocked) Cyan400.copy(alpha = 0.3f) else GlassBorder, RoundedCornerShape(16.dp))
-                                    .padding(12.dp),
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Surface(
@@ -248,21 +521,72 @@ fun ProfileScreen(viewModel: MainViewModel, onLogout: () -> Unit) {
                                         Text(if (isUnlocked) ach.iconSymbol else "🔒", fontSize = 20.sp)
                                     }
                                 }
+
                                 Spacer(modifier = Modifier.width(12.dp))
+
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(ach.title, color = if (isUnlocked) Color.White else Slate400, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                    Text(ach.description, color = Slate400, style = MaterialTheme.typography.bodySmall)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            ach.title,
+                                            color = if (isUnlocked) Color.White else Slate400,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            ach.category.icon,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        ach.description,
+                                        color = Slate400,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp)
+                                    )
                                 }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
                                 if (isUnlocked) {
                                     Surface(
                                         color = Color(0xFF00E676).copy(alpha = 0.2f),
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        Text("UNLOCKED", color = Color(0xFF00E676), style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Black), modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                                        Text(
+                                            "UNLOCKED",
+                                            color = Color(0xFF00E676),
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Black),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                        )
                                     }
                                 } else {
-                                    Text("+${ach.rewardCoins} 🪙", color = Amber400, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text("+${ach.rewardCoins} 🪙", color = Amber400, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp))
+                                        Text("+${ach.rewardXp} XP", color = Cyan400, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp))
+                                    }
                                 }
+                            }
+
+                            if (!isUnlocked) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Progress", color = Slate400, fontSize = 9.sp)
+                                    Text("$currentProgressValue / ${ach.targetValue}", color = Slate400, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = { progressRatio },
+                                    color = Cyan400,
+                                    trackColor = GlassBorder,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                )
                             }
                         }
                     }
@@ -329,28 +653,5 @@ fun ProfileScreen(viewModel: MainViewModel, onLogout: () -> Unit) {
                 Spacer(modifier = Modifier.height(24.dp))
             }
         }
-    }
-}
-
-@Composable
-fun CognitiveSkillBar(name: String, value: Float, color: Color) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(name, color = Color.White, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium))
-            Text("${(value * 100).toInt()}%", color = color, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
-        }
-        Spacer(modifier = Modifier.height(4.dp))
-        LinearProgressIndicator(
-            progress = { value },
-            color = color,
-            trackColor = GlassBorder,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp))
-        )
     }
 }
