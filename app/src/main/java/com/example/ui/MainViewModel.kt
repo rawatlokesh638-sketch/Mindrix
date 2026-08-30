@@ -18,6 +18,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+// Authentication State Enum
+enum class AuthState {
+    Checking,
+    Authenticated,
+    Unauthenticated
+}
+
 data class LevelUpReward(
     val level: Int,
     val rewardCoins: Int
@@ -42,6 +49,10 @@ data class Mission(
 )
 
 class MainViewModel(private val repository: MindrixRepository) : ViewModel() {
+    // Authentication State - Single source of truth
+    private val _authState = MutableStateFlow<AuthState>(AuthState.Checking)
+    val authState: StateFlow<AuthState> = _authState.asStateFlow()
+
     val userStats: StateFlow<UserStats?> = repository.userStats
         .stateIn(
             scope = viewModelScope,
@@ -78,6 +89,7 @@ class MainViewModel(private val repository: MindrixRepository) : ViewModel() {
             } else {
                 repository.logoutAll()
                 repository.saveUserStats(existing.copy(isLoggedIn = true))
+                _authState.value = AuthState.Authenticated
                 onResult(true, "Login successful!")
             }
         }
@@ -108,6 +120,7 @@ class MainViewModel(private val repository: MindrixRepository) : ViewModel() {
                     aiRating = 1200
                 )
                 repository.saveUserStats(newUser)
+                _authState.value = AuthState.Authenticated
                 onResult(true, "Account created successfully!")
             }
         }
@@ -116,6 +129,7 @@ class MainViewModel(private val repository: MindrixRepository) : ViewModel() {
     fun logout() {
         viewModelScope.launch {
             repository.logoutAll()
+            _authState.value = AuthState.Unauthenticated
         }
     }
 
@@ -174,9 +188,12 @@ class MainViewModel(private val repository: MindrixRepository) : ViewModel() {
     val missions = _missions.asStateFlow()
 
     init {
+        // Check authentication state on init
         viewModelScope.launch {
             repository.userStats.collect { stats ->
-                if (stats != null) {
+                // Update auth state based on userStats from Room DB
+                if (stats != null && stats.isLoggedIn) {
+                    _authState.value = AuthState.Authenticated
                     SoundManager.setSoundEnabled(stats.soundEffectsEnabled)
                     val aiType = try {
                         AiPersonalityType.valueOf(stats.selectedAI)
@@ -184,6 +201,10 @@ class MainViewModel(private val repository: MindrixRepository) : ViewModel() {
                         AiPersonalityType.NOVA
                     }
                     _selectedAi.value = aiType
+                } else if (_authState.value == AuthState.Checking) {
+                    // Only set to Unauthenticated if we were in Checking state
+                    // This ensures we don't override a logout action
+                    _authState.value = AuthState.Unauthenticated
                 }
             }
         }
